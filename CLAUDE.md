@@ -1,10 +1,60 @@
 # kakeibo-app
 
-家計簿アプリのプロジェクトです。
+レシート画像を Claude AI で読み取る家計簿 Web アプリです。
 
 ## プロジェクト概要
 
-日々の収支を記録・管理するための家計簿アプリケーションです。
+レシート画像をアップロードすると Claude API が自動で商品・金額・日付を読み取り、カテゴリ別に集計・グラフ表示します。
+
+## 技術スタック
+
+| 層 | 技術 |
+|---|---|
+| フロントエンド | React 18 + Vite |
+| バックエンド | Node.js + Express |
+| AI | Claude API（claude-haiku-4-5-20251001） |
+| グラフ | Chart.js + react-chartjs-2 |
+| データ永続化 | localStorage |
+
+## ディレクトリ構成
+
+```
+kakeibo-app/
+├── server/          # Expressバックエンド（Claude API呼び出し）
+│   ├── server.js
+│   └── package.json
+├── client/          # Reactフロントエンド
+│   ├── src/
+│   │   ├── App.jsx
+│   │   ├── components/
+│   │   │   ├── ReceiptUploader.jsx   # 画像アップロード
+│   │   │   ├── ExpenseList.jsx       # 支出一覧
+│   │   │   ├── Summary.jsx           # サマリーカード・カテゴリ内訳
+│   │   │   ├── CategoryChart.jsx     # カテゴリ別円グラフ
+│   │   │   └── MonthlyChart.jsx      # 月別棒グラフ
+│   │   └── hooks/
+│   │       └── useLocalStorage.js
+│   └── package.json
+├── .env             # APIキー（Git管理外）
+├── .env.example     # .envのテンプレート
+└── package.json     # ルート（concurrently でサーバー+クライアント同時起動）
+```
+
+## セットアップ・起動
+
+```bash
+# 初回: .env.example をコピーして APIキーを設定
+cp .env.example .env
+
+# 依存パッケージのインストール（初回のみ）
+npm run install:all
+
+# 開発サーバー起動（サーバー + クライアント同時起動）
+npm run dev
+```
+
+- フロントエンド: http://localhost:5173
+- バックエンド: http://localhost:3001
 
 ## Git 運用ルール
 

@@ -1,0 +1,12 @@
+{
+  "name": "kakeibo-app",
+  "version": "1.0.0",
+  "description": "レシート読み込み家計簿Webアプリ",
+  "scripts": {
+    "dev": "concurrently --names サーバー,フロント --prefix-colors bgBlue.bold,bgGreen.bold \"node server/server.js\" \"npm run dev --prefix client\"",
+    "install:all": "npm install && npm install --prefix server && npm install --prefix client"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  }
+}

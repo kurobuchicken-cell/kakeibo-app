@@ -1,0 +1,23 @@
+# 環境変数（APIキーを含むため必ずGit管理外にする）
+.env
+
+# 依存パッケージ
+node_modules/
+client/node_modules/
+server/node_modules/
+
+# Viteビルド成果物
+client/dist/
+client/.vite/
+
+# ログファイル
+*.log
+npm-debug.log*
+
+# OS生成ファイル
+.DS_Store
+Thumbs.db
+
+# エディタ設定
+.vscode/settings.json
+.idea/
