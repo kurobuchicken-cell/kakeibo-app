@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<title>仕様書_kakeibo-app</title>
+<style>
+  body { font-family: "Segoe UI", "Hiragino Sans", "Meiryo", sans-serif; line-height: 1.7; color: #1f2937; max-width: 960px; margin: 40px auto; padding: 0 24px; background: #f8fafc; }
+  h1 { border-bottom: 3px solid #3b82f6; padding-bottom: 8px; }
+  h2 { margin-top: 40px; border-left: 5px solid #3b82f6; padding-left: 10px; }
+  h3 { margin-top: 24px; color: #1e40af; }
+  table { border-collapse: collapse; width: 100%; margin: 12px 0; background: #fff; }
+  th, td { border: 1px solid #cbd5e1; padding: 8px 12px; text-align: left; font-size: 14px; }
+  th { background: #e2e8f0; }
+  code, pre { background: #f1f5f9; border-radius: 4px; }
+  code { padding: 2px 6px; font-size: 13px; }
+  pre { padding: 12px; overflow-x: auto; font-size: 13px; }
+  .badge { display: inline-block; padding: 2px 10px; border-radius: 12px; color: #fff; font-size: 12px; margin: 2px; }
+  ul { margin: 8px 0; }
+  .meta { color: #64748b; font-size: 14px; }
+  .note { background: #fef9c3; border-left: 4px solid #eab308; padding: 8px 14px; margin: 12px 0; font-size: 14px; }
+</style>
+</head>
+<body>
+
+<h1>仕様書：kakeibo-app（レシート読み込み家計簿Webアプリ）</h1>
+<p class="meta">作成日: 2026-06-22</p>
+
+<h2>1. 概要</h2>
+<p>レシート画像をアップロードすると、Claude API（画像解析）が自動で日付・店舗名・商品・金額・カテゴリを読み取り、家計簿として一覧・集計・グラフ表示する個人向けWebアプリ。データはサーバーには保存せず、ブラウザの localStorage にのみ永続化する。</p>
+
+<h2>2. 技術スタック</h2>
+<table>
+<tr><th>層</th><th>技術</th></tr>
+<tr><td>フロントエンド</td><td>React 18 + Vite 5</td></tr>
+<tr><td>バックエンド</td><td>Node.js + Express 4</td></tr>
+<tr><td>AI（画像解析）</td><td>Anthropic Claude API（モデル: claude-haiku-4-5-20251001）</td></tr>
+<tr><td>グラフ</td><td>Chart.js 4 + react-chartjs-2</td></tr>
+<tr><td>ファイルアップロード</td><td>multer（メモリストレージ、10MB上限）</td></tr>
+<tr><td>データ永続化</td><td>ブラウザ localStorage（サーバー側DBなし）</td></tr>
+</table>
+
+<h2>3. システム構成</h2>
+<pre>ブラウザ (http://localhost:5173, Vite Dev Server)
+   │  fetch('/api/analyze-receipt')  ※Viteプロキシ経由
+   ▼
+Express サーバー (http://localhost:3001)
+   │  画像Base64化 → Claude API呼び出し
+   ▼
+Anthropic Claude API (claude-haiku-4-5-20251001)
+   │  JSON形式でレシート解析結果を返却
+   ▼
+Express サーバー → ブラウザへJSON返却 → localStorageに保存</pre>
+<p>APIキーはサーバー側の <code>.env</code>（プロジェクトルート）でのみ管理し、ブラウザには一切露出しない。Vite の <code>/api</code> プロキシ設定（<code>client/vite.config.js</code>）により、フロントエンドはCORSなしでバックエンドにアクセスする。</p>
+
+<h2>4. ディレクトリ構成</h2>
+<pre>kakeibo-app/
+├── server/                          # Expressバックエンド
+│   ├── server.js                    # APIエンドポイント・Claude呼び出し
+│   └── package.json
+├── client/                          # Reactフロントエンド
+│   ├── vite.config.js               # /api プロキシ設定
+│   └── src/
+│       ├── App.jsx                  # タブ切替・状態管理のルート
+│       ├── components/
+│       │   ├── ReceiptUploader.jsx  # 画像アップロード・カテゴリ色定義
+│       │   ├── ExpenseList.jsx      # 支出一覧・削除
+│       │   ├── Summary.jsx          # サマリーカード・カテゴリ内訳
+│       │   ├── CategoryChart.jsx    # カテゴリ別円グラフ
+│       │   └── MonthlyChart.jsx     # 月別棒グラフ
+│       └── hooks/
+│           └── useLocalStorage.js   # localStorage同期フック
+├── .env                             # APIキー（Git管理外）
+├── .env.example
+└── package.json                     # concurrently でサーバー+クライアント同時起動</pre>
+
+<h2>5. 画面構成（3タブ構成）</h2>
+<h3>5.1 アップロードタブ</h3>
+<ul>
+<li>ドラッグ＆ドロップ、またはクリックでファイル選択（JPG/PNG/WEBP/GIF、最大10MB）</li>
+<li>選択直後にプレビュー画像を表示し、解析中はローディングスピナーを表示</li>
+<li>解析成功時は商品一覧（カテゴリバッジ付き）・合計金額を表示し、自動で一覧タブにデータを追加</li>
+<li>失敗時はエラーメッセージを表示</li>
+</ul>
+<h3>5.2 一覧タブ</h3>
+<ul>
+<li>登録済みレシートを新しい順にカード表示（店舗名・日付・合計金額・商品テーブル）</li>
+<li>レシート単位の削除、全件削除（確認ダイアログあり）</li>
+<li>データが0件の場合は空状態メッセージを表示</li>
+</ul>
+<h3>5.3 グラフタブ</h3>
+<ul>
+<li>サマリーカード：今月の支出合計／登録レシート数／累計支出</li>
+<li>今月のカテゴリ別内訳（横棒グラフ形式の内訳バー）</li>
+<li>カテゴリ別支出（円グラフ、全期間）</li>
+<li>月別支出（棒グラフ、直近6ヶ月）</li>
+</ul>
+
+<h2>6. カテゴリ定義</h2>
+<table>
+<tr><th>カテゴリ</th><th>説明</th><th>表示色</th></tr>
+<tr><td>食費</td><td>スーパー・コンビニの食品・飲料</td><td><span class="badge" style="background:#ef4444">#ef4444</span></td></tr>
+<tr><td>外食</td><td>レストラン・カフェ・ファストフード・テイクアウト</td><td><span class="badge" style="background:#f97316">#f97316</span></td></tr>
+<tr><td>日用品</td><td>洗剤・トイレットペーパー・文具などの生活用品</td><td><span class="badge" style="background:#eab308">#eab308</span></td></tr>
+<tr><td>交通費</td><td>電車・バス・タクシー・駐車場・ガソリン</td><td><span class="badge" style="background:#14b8a6">#14b8a6</span></td></tr>
+<tr><td>医療費</td><td>薬局・病院・クリニック</td><td><span class="badge" style="background:#3b82f6">#3b82f6</span></td></tr>
+<tr><td>娯楽費</td><td>映画・ゲーム・書籍・趣味用品</td><td><span class="badge" style="background:#8b5cf6">#8b5cf6</span></td></tr>
+<tr><td>その他</td><td>上記に当てはまらないもの</td><td><span class="badge" style="background:#94a3b8">#94a3b8</span></td></tr>
+</table>
+<p>カテゴリ分類はClaude APIへのプロンプト内でこの7種類に固定するよう指示している。商品単位でカテゴリが付与される（レシート単位ではない）。</p>
+
+<h2>7. API仕様</h2>
+<h3>7.1 POST /api/analyze-receipt</h3>
+<table>
+<tr><th>項目</th><th>内容</th></tr>
+<tr><td>リクエスト</td><td><code>multipart/form-data</code>、フィールド名 <code>image</code>（画像ファイル、最大10MB）</td></tr>
+<tr><td>処理</td><td>画像をBase64化し、Claude API（claude-haiku-4-5-20251001）に解析プロンプトと共に送信。レスポンス文字列から正規表現でJSON部分を抽出してパース</td></tr>
+<tr><td>正常レスポンス</td><td>200 OK、下記レシートJSON</td></tr>
+<tr><td>異常レスポンス</td><td><code>400</code>: 画像ファイル未指定 / <code>500</code>: 解析失敗（JSON抽出不可・Claude API例外等）、<code>{ error, detail }</code></td></tr>
+</table>
+<h3>7.2 GET /api/health</h3>
+<p>サーバー起動確認用。<code>{ status: "ok", model: "claude-haiku-4-5-20251001" }</code> を返す。</p>
+
+<h2>8. データモデル</h2>
+<h3>8.1 Claude解析結果（APIレスポンス）</h3>
+<pre>{
+  "date": "YYYY-MM-DD",
+  "store": "店舗名",
+  "items": [
+    { "name": "商品名", "price": 198, "category": "食費" }
+  ],
+  "total": 1280
+}</pre>
+<h3>8.2 localStorage保存形式（キー: <code>kakeibo-receipts</code>）</h3>
+<p>上記レスポンスに以下を付加した配列を、新しい順（先頭が最新）で保存する。</p>
+<pre>{
+  ...（8.1のフィールド）,
+  "id": "Date.now()の文字列",
+  "registeredAt": "ISO8601タイムスタンプ"
+}</pre>
+
+<h2>9. レシート解析プロンプトの仕様（要点）</h2>
+<ul>
+<li>JSON以外のテキスト（コードブロック・説明文）を含めないよう明示的に指示</li>
+<li>日付が読み取れない場合はサーバーのリクエスト時点の日付（今日）を使用するよう指示</li>
+<li>価格は税込み金額を使用</li>
+<li>カテゴリは上記7種類から選択させ、自由記述を許可しない</li>
+</ul>
+
+<h2>10. セットアップ・起動</h2>
+<pre>cp .env.example .env        # ANTHROPIC_API_KEY を設定
+npm run install:all         # ルート/server/client の依存を一括インストール
+npm run dev                  # サーバー(3001)・クライアント(5173)を同時起動</pre>
+<table>
+<tr><th>環境変数</th><th>説明</th><th>デフォルト</th></tr>
+<tr><td>ANTHROPIC_API_KEY</td><td>Anthropic APIキー</td><td>必須・未設定だと解析失敗</td></tr>
+<tr><td>PORT</td><td>バックエンドサーバーのポート</td><td>3001</td></tr>
+</table>
+
+<h2>11. 非機能要件・制約</h2>
+<ul>
+<li>画像アップロードサイズ上限: 10MB（multerのファイルサイズ制限）</li>
+<li>CORS許可オリジン: <code>http://localhost:5173</code>, <code>http://localhost:3000</code>（サーバー側でホワイトリスト指定）</li>
+<li>データベース・サーバー側永続化なし。全データはブラウザのlocalStorageに保存されるため、ブラウザ・端末をまたいだ共有はできない</li>
+<li>APIキーはサーバー側の.envのみで管理し、Gitにコミットしない（.gitignore対象）</li>
+</ul>
+
+<div class="note">本仕様書は実装（server/server.js, client/src 配下）と一致させること。仕様変更時は実装と合わせて本ファイルも更新する。</div>
+
+</body>
+</html>
